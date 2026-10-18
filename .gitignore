@@ -11,6 +11,9 @@ release/
 venv/
 env/
 
+# Local environment configuration (keep .env.example tracked)
+.env
+
 # Tests / coverage
 .pytest_cache/
 .coverage

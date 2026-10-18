@@ -1,5 +1,5 @@
-"""Configuration handling: defaults and persistence."""
+"""Configuration handling: defaults, environment and persistence."""
 
-from . import defaults, settings_manager
+from . import defaults, env, settings_manager
 
-__all__ = ["defaults", "settings_manager"]
+__all__ = ["defaults", "env", "settings_manager"]

@@ -11,6 +11,7 @@ import threading
 from typing import List, Optional
 
 from .camera.camera_manager import CameraManager
+from .config import env
 from .config.settings_manager import SettingsManager
 from .core.gesture_controller import GestureController
 from .core.hand_tracker import HandTracker
@@ -513,7 +514,10 @@ class Application:
 
 def main() -> None:
     """Entry point: run the application GUI."""
+    # Load local, offline configuration from .env when present (never fatal).
+    env.load_env()
     application = Application()
+    env.apply_to_settings(application.settings)
     try:
         application.run()
     except Exception:

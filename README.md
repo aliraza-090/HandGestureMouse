@@ -23,6 +23,7 @@ HandGestureMouse uses Google **MediaPipe Tasks** hand-landmark detection on top 
 - [Build & packaging](#build--packaging)
 - [Architecture](#architecture)
 - [Settings reference](#settings-reference)
+- [Offline configuration (`.env`)](#offline-configuration-env)
 - [Testing](#testing)
 - [Offline & privacy](#offline--privacy)
 - [Troubleshooting](#troubleshooting)
@@ -64,6 +65,9 @@ HandGestureMouse uses Google **MediaPipe Tasks** hand-landmark detection on top 
 - **Start with Windows** — optional per-user registry auto-start.
 - **Persistent settings** at `%APPDATA%\HandGestureMouse\settings.json` and a
   rotating log at `%APPDATA%\HandGestureMouse\logs\app.log`.
+- **Local `.env` offline configuration** — an optional `.env` file, parsed by a
+  built-in **standard-library** loader (no third-party dependency), tunes offline
+  operation. A committed `.env.example` documents every key.
 
 ---
 
@@ -218,10 +222,12 @@ For distribution, a `release\` folder collects the deliverables:
 
 ```
 main.py                      # entry point; adds src/ to sys.path and runs the app
+.env / .env.example          # optional local offline configuration (loader input)
 src/handgesturemouse/
   app.py                     # Application: wiring, global hotkey, event loop, lifecycle
   config/
     defaults.py              # default settings + validation/coercion helpers
+    env.py                   # standard-library .env loader (offline configuration)
     settings_manager.py      # load/save/atomic-write settings.json, change listeners
   core/
     geometry.py              # landmark math + finger-extension / pinch helpers
@@ -313,6 +319,40 @@ the **Settings** tab.
 
 ---
 
+## Offline configuration (`.env`)
+
+HandGestureMouse reads an optional `.env` file at startup. The loader is built
+entirely on the Python **standard library** (no `python-dotenv` dependency) and is
+completely fail-safe: if the file is missing, unreadable, or malformed, the
+application still starts and runs offline.
+
+The loader (`src/handgesturemouse/config/env.py`) looks for `.env` in the current
+working directory, the project root, and next to the packaged executable. Values
+already defined by the operating system are never overwritten, and `${VAR}` /
+`%VAR%` references are expanded locally. Nothing is ever sent over the network.
+
+Copy the template to get started:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+| Key                  | Example                                                       | Purpose                                                         |
+| -------------------- | ------------------------------------------------------------ | -------------------------------------------------------------- |
+| `APP_ENV`            | `production`                                                 | Deployment environment label                                   |
+| `OFFLINE_MODE`       | `True`                                                       | Keep the app in strict offline mode                            |
+| `AUTO_CHECK_UPDATES` | `False`                                                      | Disable update checks (never contacts the network)             |
+| `TELEMETRY_ENABLED`  | `False`                                                      | Telemetry stays off — nothing is ever collected or sent        |
+| `MODEL_PATH`         | `src/handgesturemouse/resources/models/hand_landmarker.task` | Location of the MediaPipe hand-landmarker model                |
+| `CONFIG_DIR`         | `%APPDATA%/HandGestureMouse`                                 | User settings/logs directory (`%APPDATA%` expanded locally)    |
+| `FAILSAFE_ENABLED`   | `True`                                                       | Keep the PyAutoGUI corner fail-safe active                     |
+| `EMERGENCY_HOTKEY`   | `ctrl+alt+e`                                                 | Global emergency-stop hotkey (applied to `emergency_hotkey`)   |
+
+`.env` is git-ignored so each machine keeps its own local values, while
+`.env.example` is committed for reference.
+
+---
+
 ## Testing
 
 ```powershell
@@ -325,7 +365,8 @@ behaviour, camera lifecycle, hand-tracker error handling, hotkey parsing,
 system-tray lifecycle, resource/user-data paths, packaging/installer consistency,
 and the feature modules (auto-start registry, eco FPS throttle, reconnect
 backoff, multi-monitor regions, calibration, audio feedback, tray notifications,
-camera buffer/reuse, frame-loss tolerance, on-frame gesture badge).
+camera buffer/reuse, frame-loss tolerance, on-frame gesture badge, and the
+standard-library `.env` loader). It reports **158 tests**.
 
 With coverage:
 
@@ -337,8 +378,14 @@ With coverage:
 
 ## Offline & privacy
 
+**The application runs 100% offline** — no telemetry and no external network
+calls at runtime. Every gesture, camera frame, and click stays entirely on your
+machine.
+
 - All inference happens on-device via MediaPipe/OpenCV.
 - No telemetry, analytics, accounts, or network calls at runtime.
+- Local `.env` configuration is optional and read from disk only (see
+  [Offline configuration (`.env`)](#offline-configuration-env)).
 - The only network access is the one-time `scripts\download_model.py` step (and
   dependency installation). You may commit the model file yourself and skip it.
 - Camera frames and mouse usage are never stored or transmitted.
