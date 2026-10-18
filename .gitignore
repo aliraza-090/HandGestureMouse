@@ -1,0 +1,29 @@
+# Windows / packaging
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+packaging/Output/
+release/
+*.spec.bak
+.venv/
+venv/
+env/
+
+# Tests / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs and user data
+logs/
+*.log
+
+# OS
+Thumbs.db
+Desktop.ini

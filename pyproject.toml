@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "handgesturemouse"
+version = "1.0.0"
+description = "Control the mouse cursor with webcam hand gestures. Fully offline, desktop-only."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Ali Raza Chakrani" }]
+keywords = ["hand tracking", "mouse control", "mediapipe", "opencv", "computer vision"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Topic :: Desktop Environment",
+]
+
+dependencies = [
+    "mediapipe==1.1.0",
+    "opencv-contrib-python==5.0.0.93",
+    "numpy==2.5.4",
+    "customtkinter==6.0.0",
+    "pyautogui==0.9.54",
+    "pynput==1.8.2",
+    "Pillow==12.3.0",
+    "pystray==0.19.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "pyinstaller==6.22.3",
+]
+
+[project.scripts]
+handgesturemouse = "handgesturemouse.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+handgesturemouse = [
+    "resources/models/*.task",
+    "resources/icons/*.ico",
+    "resources/icons/*.png",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

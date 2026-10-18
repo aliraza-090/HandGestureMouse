@@ -1,0 +1,15 @@
+# HandGestureMouse runtime dependencies.
+# All packages are pure local-processing; no cloud services are used.
+#
+# mediapipe pulls in opencv-contrib-python (which provides `cv2`) and numpy.
+# We list opencv-contrib-python explicitly so the requirement is obvious and
+# to prevent a conflicting `opencv-python` + `opencv-contrib-python` install.
+
+mediapipe==1.1.0
+opencv-contrib-python==5.0.0.93
+numpy==2.5.4
+customtkinter==6.0.0
+pyautogui==0.9.54
+pynput==1.8.2
+Pillow==12.3.0
+pystray==0.19.5
