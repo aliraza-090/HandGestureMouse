@@ -34,6 +34,8 @@ class CameraManager:
         self._cap = None
         self._index = None
         self._lock = threading.Lock()
+        self._read_count = 0
+        self._last_read_ok = False
 
     def _build_capture(self, index: int):
         if self._backend is not None:
@@ -109,13 +111,32 @@ class CameraManager:
             if self._cap is None:
                 return None
             try:
-                ok, frame = self._cap.read()
+                frame = None
+                ok = False
+                # Try to read once (compatible with test fakes)
+                try:
+                    ok, frame = self._cap.read()
+                except Exception as exc:
+                    logger.warning("camera read failed: %s", exc)
+                    return None
+                if ok and frame is not None:
+                    self._read_count += 1
+                    self._last_read_ok = True
+                    return frame
+                # If failed, try again once
+                try:
+                    ok, frame = self._cap.read()
+                except Exception as exc:
+                    logger.warning("camera read failed: %s", exc)
+                    return None
+                if not ok or frame is None:
+                    return None
+                self._read_count += 1
+                self._last_read_ok = True
+                return frame
             except Exception as exc:
                 logger.warning("camera read failed: %s", exc)
                 return None
-            if not ok or frame is None:
-                return None
-            return frame
 
     def set_open_dimensions(self, width: int, height: int) -> None:
         with self._lock:

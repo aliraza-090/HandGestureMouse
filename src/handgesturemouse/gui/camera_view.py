@@ -200,10 +200,23 @@ class CameraView(ctk.CTkFrame):
 
 
 def _cover(image: Image.Image, box_w: int, box_h: int) -> Image.Image:
-    """Resize to cover ``(box_w, box_h)`` and centre-crop."""
-    scale = max(box_w / image.width, box_h / image.height)
-    new_w, new_h = max(1, int(image.width * scale)), max(1, int(image.height * scale))
-    image = image.resize((new_w, new_h), Image.LANCZOS)
-    left = (new_w - box_w) // 2
-    top = (new_h - box_h) // 2
-    return image.crop((left, top, left + box_w, top + box_h))
+    """Resize to fit ``(box_w, box_h)`` preserving aspect ratio without cropping."""
+    try:
+        scale = min(box_w / image.width, box_h / image.height)
+        if scale <= 0:
+            scale = 1.0
+        new_w, new_h = max(1, int(image.width * scale)), max(1, int(image.height * scale))
+        image = image.resize((new_w, new_h), Image.LANCZOS)
+        # Create canvas with background color to avoid stretching
+        canvas = Image.new('RGB', (box_w, box_h), (23, 27, 36))  # theme.SURFACE_2 approx
+        left = (box_w - new_w) // 2
+        top = (box_h - new_h) // 2
+        canvas.paste(image, (left, top))
+        return canvas
+    except Exception:
+        scale = max(box_w / image.width, box_h / image.height)
+        new_w, new_h = max(1, int(image.width * scale)), max(1, int(image.height * scale))
+        image = image.resize((new_w, new_h), Image.LANCZOS)
+        left = (new_w - box_w) // 2
+        top = (new_h - box_h) // 2
+        return image.crop((left, top, left + box_w, top + box_h))

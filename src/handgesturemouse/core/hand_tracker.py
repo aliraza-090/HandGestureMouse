@@ -148,38 +148,66 @@ class HandTracker:
     # -- inference -------------------------------------------------------------
 
     def detect(self, frame_bgr: np.ndarray) -> HandTrackerResult:
-        """Run detection on a BGR OpenCV frame and mirror-track like selfie mode.
-
-        The caller is responsible for handing the mirrored frame; we expect the
-        frame exactly as it will be shown to the user.
-        """
+        """Run detection on a BGR OpenCV frame."""
         max_ts = 1 << 30
         self._frame_counter += 1
-        timestamp_ms = (self._frame_counter * 1000) % max_ts
+        timestamp_ms = (self._frame_counter * 33) % max_ts  # ~30fps timestamps
         try:
-            mp_image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=frame_bgr)
+            # MediaPipe expects RGB
+            import cv2
+            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            mp_image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=frame_rgb)
             result = self._landmarker.detect_for_video(mp_image, timestamp_ms)
         except Exception as exc:
             logger.warning("detection failed: %s", exc)
             return HandTrackerResult(error=str(exc))
 
-        num_hands = len(result.hand_landmarks)
+        try:
+            num_hands = len(getattr(result, 'hand_landmarks', [])) or 0
+        except Exception:
+            num_hands = 0
         if num_hands == 0:
             return HandTrackerResult(num_hands=0)
 
         hands = []
-        for i in range(num_hands):
-            handedness = result.handedness[i][0].category_name if i < len(result.handedness) else ""
-            score = result.handedness[i][0].score if i < len(result.handedness) else 0.0
-            landmarks = [
-                (float(lm.x), float(lm.y), float(lm.z))
-                for lm in result.hand_landmarks[i]
-            ]
-            hands.append(TrackedHand(handedness=handedness, score=score, landmarks=landmarks))
+        try:
+            for i in range(num_hands):
+                handedness = ""
+                score = 0.0
+                try:
+                    if hasattr(result, 'handedness') and i < len(result.handedness):
+                        handedness = result.handedness[i][0].category_name
+                        score = result.handedness[i][0].score
+                except Exception:
+                    pass
+                landmarks = []
+                try:
+                    for lm in result.hand_landmarks[i]:
+                        # Handle both attribute and dict style
+                        if hasattr(lm, 'x'):
+                            landmarks.append((float(lm.x), float(lm.y), float(getattr(lm, 'z', 0.0))))
+                        elif isinstance(lm, (list, tuple)) and len(lm) >= 2:
+                            landmarks.append((float(lm[0]), float(lm[1]), float(lm[2]) if len(lm) > 2 else 0.0))
+                        else:
+                            landmarks.append((0.5, 0.5, 0.0))
+                except Exception:
+                    pass
+                if len(landmarks) == 21:
+                    hands.append(TrackedHand(handedness=handedness, score=score, landmarks=landmarks))
+        except Exception:
+            pass
 
-        hand, _ = largest_hand([h.landmarks for h in hands])
-        handedness = next((h.handedness for h in hands if _same(h.landmarks, hand)), "")
-        score = next((h.score for h in hands if _same(h.landmarks, hand)), 0.0)
+        if not hands:
+            return HandTrackerResult(num_hands=0)
+
+        try:
+            hand, _ = largest_hand([h.landmarks for h in hands])
+            handedness = next((h.handedness for h in hands if _same(h.landmarks, hand)), "")
+            score = next((h.score for h in hands if _same(h.landmarks, hand)), 0.0)
+        except Exception:
+            hand = hands[0].landmarks
+            handedness = hands[0].handedness
+            score = hands[0].score
         return HandTrackerResult(
             landmarks=hand,
             handedness=handedness,
@@ -189,28 +217,74 @@ class HandTracker:
 
     def annotate(self, frame_bgr: np.ndarray, landmarks) -> np.ndarray:
         """Draw landmarks / connections onto a BGR frame (in place)."""
-        if not landmarks:
+        if not landmarks or len(landmarks) == 0:
             return frame_bgr
         try:
+            import cv2
+
+            h, w = frame_bgr.shape[:2]
+            # Draw bright green connections first
             from mediapipe.tasks.python.vision import HandLandmarksConnections
-            from mediapipe.tasks.python.vision.drawing_utils import draw_landmarks
-            from mediapipe.tasks.python.vision.drawing_styles import (
-                get_default_hand_connections_style,
-                get_default_hand_landmarks_style,
-            )
 
-            from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
-
-            normalised = [NormalizedLandmark(x=lm[0], y=lm[1], z=lm[2]) for lm in landmarks]
-            draw_landmarks(
-                frame_bgr,
-                normalised,
-                HandLandmarksConnections.HAND_CONNECTIONS,
-                get_default_hand_landmarks_style(),
-                get_default_hand_connections_style(),
-            )
+            connections = HandLandmarksConnections.HAND_CONNECTIONS
+            # Bright green in BGR
+            line_color = (0, 255, 0)
+            dot_color = (0, 255, 0)
+            # Draw all connections
+            for connection in connections:
+                try:
+                    start_idx = connection[0]
+                    end_idx = connection[1]
+                    if start_idx < len(landmarks) and end_idx < len(landmarks):
+                        start = landmarks[start_idx]
+                        end = landmarks[end_idx]
+                        p1 = (int(float(start[0]) * w), int(float(start[1]) * h))
+                        p2 = (int(float(end[0]) * w), int(float(end[1]) * h))
+                        if p1[0] < 0 or p1[0] >= w or p1[1] < 0 or p1[1] >= h:
+                            continue
+                        if p2[0] < 0 or p2[0] >= w or p2[1] < 0 or p2[1] >= h:
+                            continue
+                        cv2.line(frame_bgr, p1, p2, line_color, 3, cv2.LINE_AA)
+                except Exception:
+                    continue
+            # Draw joints
+            for i, lm in enumerate(landmarks):
+                try:
+                    cx = int(float(lm[0]) * w)
+                    cy = int(float(lm[1]) * h)
+                    if cx < 0 or cx >= w or cy < 0 or cy >= h:
+                        continue
+                    if i == 8:  # Index fingertip - larger bright green circle
+                        cv2.circle(frame_bgr, (cx, cy), 10, line_color, -1)
+                        cv2.circle(frame_bgr, (cx, cy), 12, (0, 255, 0), 2)
+                    else:
+                        cv2.circle(frame_bgr, (cx, cy), 5, dot_color, -1)
+                        cv2.circle(frame_bgr, (cx, cy), 6, (0, 255, 0), 1)
+                except Exception:
+                    continue
+            logger.debug("annotated %d landmarks with connections", len(landmarks))
         except Exception:
             logger.debug("landmark drawing failed", exc_info=True)
+            # Fallback to default drawing if custom drawing fails
+            try:
+                from mediapipe.tasks.python.vision import HandLandmarksConnections
+                from mediapipe.tasks.python.vision.drawing_utils import draw_landmarks
+                from mediapipe.tasks.python.vision.drawing_styles import (
+                    get_default_hand_connections_style,
+                    get_default_hand_landmarks_style,
+                )
+                from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
+
+                normalised = [NormalizedLandmark(x=float(lm[0]), y=float(lm[1]), z=float(lm[2])) for lm in landmarks]
+                draw_landmarks(
+                    frame_bgr,
+                    normalised,
+                    HandLandmarksConnections.HAND_CONNECTIONS,
+                    get_default_hand_landmarks_style(),
+                    get_default_hand_connections_style(),
+                )
+            except Exception:
+                pass
         return frame_bgr
 
 

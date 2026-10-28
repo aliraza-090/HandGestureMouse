@@ -535,24 +535,58 @@ class PipelineWorker(threading.Thread):
             command: MouseCommand = None
             gesture_label = ""
             hand = False
-            if result is not None and not result.error and result.landmarks is not None:
-                frame = self.tracker.annotate(frame, result.landmarks)
+            landmarks_count = 0
+            if result is not None and not result.error and result.landmarks is not None and len(result.landmarks) > 0:
+                landmarks_count = len(result.landmarks)
+                try:
+                    logger.debug("landmarks detected: %d", landmarks_count)
+                    frame = self.tracker.annotate(frame, result.landmarks)
+                    logger.debug("annotation applied")
+                except Exception as e:
+                    logger.debug("annotation failed: %s", e)
                 hand = True
-                self._feed_calibration(result.landmarks)
-                command = self.gesture.process(result.landmarks)
-                gesture_label = self.gesture.classify_pose(result.landmarks).gesture
+                try:
+                    self._feed_calibration(result.landmarks)
+                except Exception:
+                    pass
+                try:
+                    command = self.gesture.process(result.landmarks)
+                    gesture_label = self.gesture.classify_pose(result.landmarks).gesture
+                except Exception:
+                    command = self.gesture.process(None)
+                    gesture_label = ""
             else:
-                command = self.gesture.process(None)
+                try:
+                    command = self.gesture.process(None)
+                except Exception:
+                    command = None
+                gesture_label = ""
+                hand = False
+                landmarks_count = 0
 
-            if self._mouse_enabled:
-                self._execute(command)
+            if self._mouse_enabled and command is not None:
+                try:
+                    self._execute(command)
+                except Exception:
+                    pass
 
             if frame is not None:
                 # Render gesture/action text onto the frame so the user always
                 # sees the system responding, regardless of the side panel.
-                frame = self._draw_hud(
-                    frame, gesture_label, command.label if command else "", hand
-                )
+                try:
+                    frame = self._draw_hud(
+                        frame, gesture_label, command.label if command else "", hand
+                    )
+                except Exception:
+                    pass
+                # Add debug indicator for landmarks
+                try:
+                    import cv2
+                    h, w = frame.shape[:2]
+                    text = f"Landmarks: {landmarks_count}/21"
+                    cv2.putText(frame, text, (10, h - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+                except Exception:
+                    pass
 
             self._post_status(
                 hand=hand,
@@ -562,9 +596,12 @@ class PipelineWorker(threading.Thread):
             )
 
             if frame is not None:
-                jpeg = self._downscale(frame)
-                if jpeg:
-                    self._publish("frame", jpeg=jpeg)
+                try:
+                    jpeg = self._downscale(frame)
+                    if jpeg:
+                        self._publish("frame", jpeg=jpeg)
+                except Exception:
+                    pass
 
             # FPS accounting + pacing
             now = time.perf_counter()

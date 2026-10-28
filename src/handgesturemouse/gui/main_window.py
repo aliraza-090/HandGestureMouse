@@ -172,13 +172,28 @@ class MainWindow(ctk.CTk):
                 view.update_status(payload)
 
     def show_frame(self, jpeg: bytes) -> None:
-        view = self._views.get("tracking")
-        # Skip decoding / rendering entirely while minimised or hidden to the
-        # tray: tracking keeps running but we do not waste CPU on a hidden feed.
-        if self.state() != "normal":
-            return
-        if view is not None and self._current == "tracking":
-            view.show_frame(jpeg)
+        # Always update preview frames so video remains live
+        try:
+            st = self.state()
+        except Exception:
+            st = "normal"
+        # Show in current view if it supports frames
+        view = self._views.get(self._current)
+        if view is not None and hasattr(view, "show_frame"):
+            try:
+                view.show_frame(jpeg)
+            except Exception:
+                pass
+        # Also update other views
+        for name in ("dashboard", "tracking"):
+            if name == self._current:
+                continue
+            v = self._views.get(name)
+            if v is not None and hasattr(v, "show_frame"):
+                try:
+                    v.show_frame(jpeg)
+                except Exception:
+                    pass
 
     def set_state(self, state: str) -> None:
         self._state = state
